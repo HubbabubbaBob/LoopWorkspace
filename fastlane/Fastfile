@@ -27,7 +27,18 @@ platform :ios do
   desc "Build Loop"
   lane :build_loop do
     setup_ci if ENV['CI']
-    
+
+    # --- NEW: allow one-off write to Match via env flag ---
+    allow_write = ENV['ALLOW_MATCH_WRITE'] == '1'
+    if allow_write
+      UI.message("ALLOW_MATCH_WRITE=1 → Temporarily disabling Match readonly for this run")
+      ENV["MATCH_READONLY"] = false.to_s
+    else
+      # setup_ci brukar redan slå på readonly, men vi är explicita här
+      ENV["MATCH_READONLY"] = true.to_s
+    end
+    # ------------------------------------------------------
+
     update_project_team(
       path: "#{GITHUB_WORKSPACE}/Loop/Loop.xcodeproj",
       teamid: "#{TEAMID}"
@@ -50,9 +61,12 @@ platform :ios do
       xcodeproj: "#{GITHUB_WORKSPACE}/Loop/Loop.xcodeproj",
       build_number: current_build_number
     )      
-    
+
+    # --- CHANGED: make match writable only when ALLOW_MATCH_WRITE=1 ---
     match(
       type: "appstore",
+      readonly: !allow_write,  # <— key change
+      generate_apple_certs: true,
       git_basic_authorization: Base64.strict_encode64("#{GITHUB_REPOSITORY_OWNER}:#{GH_PAT}"),
       app_identifier: [
         "com.#{TEAMID}.loopkit.Loop", 
@@ -63,6 +77,7 @@ platform :ios do
         "com.#{TEAMID}.loopkit.Loop.LoopWidgetExtension"
       ]
     )
+    # -----------------------------------------------------------------
 
     previous_build_number = latest_testflight_build_number(
       app_identifier: "com.#{TEAMID}.loopkit.Loop",
